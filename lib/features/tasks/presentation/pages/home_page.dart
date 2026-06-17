@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../auth/presentation/bloc/auth_bloc.dart';
-import '../../../auth/presentation/bloc/auth_event.dart';
-import '../../../auth/presentation/bloc/auth_state.dart';
+import 'package:provider/provider.dart';
 import '../../../auth/presentation/pages/login_page.dart';
-import '../bloc/task_bloc.dart';
-import '../bloc/task_event.dart';
-import '../bloc/task_state.dart';
+import '../../../auth/presentation/viewmodels/auth_viewmodel.dart';
+import '../viewmodels/task_viewmodel.dart';
 import '../widgets/task_card.dart';
 import 'task_form_page.dart';
 
@@ -33,13 +29,22 @@ class _HomePageState extends State<HomePage>
         _loadTasks();
       }
     });
-    _loadTasks();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTasks());
   }
 
+  String get _currentStatus => _statuses[_tabController.index];
+
   void _loadTasks() {
-    context
-        .read<TaskBloc>()
-        .add(LoadTasks(status: _statuses[_tabController.index]));
+    context.read<TaskViewModel>().loadTasks(_currentStatus);
+  }
+
+  Future<void> _logout() async {
+    final navigator = Navigator.of(context);
+    await context.read<AuthViewModel>().logout();
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (_) => false,
+    );
   }
 
   @override
@@ -51,25 +56,14 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return BlocListener<AuthBloc, AuthState>(
-      listener: (context, state) {
-        if (state is AuthLoggedOut) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const LoginPage()),
-            (_) => false,
-          );
-        }
-      },
-      child: Scaffold(
+    return Scaffold(
       appBar: AppBar(
         title: const Text('Mis Tareas'),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Cerrar sesión',
-            onPressed: () {
-              context.read<AuthBloc>().add(LogoutRequested());
-            },
+            onPressed: _logout,
           ),
         ],
         bottom: TabBar(
@@ -80,52 +74,42 @@ class _HomePageState extends State<HomePage>
           indicatorColor: cs.primary,
         ),
       ),
-      body: BlocConsumer<TaskBloc, TaskState>(
-        listener: (context, state) {
-          if (state is TaskFailure) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(state.message)),
-            );
-          }
-        },
-        builder: (context, state) {
-          if (state is TaskLoading) {
+      body: Consumer<TaskViewModel>(
+        builder: (context, vm, _) {
+          if (vm.state == TaskViewState.loading ||
+              vm.state == TaskViewState.initial) {
             return const Center(child: CircularProgressIndicator());
           }
-          if (state is TasksLoaded) {
-            if (state.tasks.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.task_alt,
-                      size: 64,
-                      color: cs.onSurfaceVariant.withValues(alpha: 0.4),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'No hay tareas',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            color: cs.onSurfaceVariant,
-                          ),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return RefreshIndicator(
-              onRefresh: () async => _loadTasks(),
-              child: ListView.builder(
-                itemCount: state.tasks.length,
-                itemBuilder: (_, i) => TaskCard(
-                  task: state.tasks[i],
-                  currentStatus: _statuses[_tabController.index],
-                ),
-              ),
+          if (vm.state == TaskViewState.failure) {
+            return _ErrorView(
+              message: vm.errorMessage ?? 'Ocurrió un error',
+              onRetry: _loadTasks,
             );
           }
-          return const SizedBox.shrink();
+          if (vm.tasks.isEmpty) {
+            return _EmptyView(onRefresh: () => vm.loadTasks(_currentStatus));
+          }
+          return RefreshIndicator(
+            onRefresh: () => vm.loadTasks(_currentStatus),
+            child: CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: _ListHeader(
+                    label: _labels[_tabController.index],
+                    count: vm.tasks.length,
+                  ),
+                ),
+                SliverList.builder(
+                  itemCount: vm.tasks.length,
+                  itemBuilder: (_, i) => TaskCard(
+                    task: vm.tasks[i],
+                    currentStatus: _currentStatus,
+                  ),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              ],
+            ),
+          );
         },
       ),
       floatingActionButton: FloatingActionButton(
@@ -133,17 +117,156 @@ class _HomePageState extends State<HomePage>
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => BlocProvider.value(
-                value: context.read<TaskBloc>(),
-                child: TaskFormPage(
-                  currentStatus: _statuses[_tabController.index],
-                ),
-              ),
+              builder: (_) => TaskFormPage(currentStatus: _currentStatus),
             ),
           );
         },
         child: const Icon(Icons.add),
       ),
+    );
+  }
+}
+
+class _ListHeader extends StatelessWidget {
+  final String label;
+  final int count;
+
+  const _ListHeader({required this.label, required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Stack(
+        children: [
+          Container(
+            height: 84,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                colors: [cs.primaryContainer, cs.tertiaryContainer],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+          ),
+          Positioned.fill(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: cs.onPrimaryContainer,
+                              fontWeight: FontWeight.bold,
+                            ),
+                      ),
+                      Text(
+                        '$count tarea${count == 1 ? '' : 's'}',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: cs.onPrimaryContainer,
+                            ),
+                      ),
+                    ],
+                  ),
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: cs.surface.withValues(alpha: 0.6),
+                    child: Text(
+                      '$count',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            color: cs.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyView extends StatelessWidget {
+  final Future<void> Function() onRefresh;
+
+  const _EmptyView({required this.onRefresh});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return RefreshIndicator(
+      onRefresh: onRefresh,
+      child: CustomScrollView(
+        slivers: [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.task_alt,
+                    size: 64,
+                    color: cs.onSurfaceVariant.withValues(alpha: 0.4),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No hay tareas',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: cs.onSurfaceVariant,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorView({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error_outline, size: 56, color: cs.error),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 16),
+            FilledButton.tonal(
+              onPressed: onRetry,
+              child: const Text('Reintentar'),
+            ),
+          ],
+        ),
       ),
     );
   }

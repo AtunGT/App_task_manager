@@ -1,5 +1,5 @@
 import '../../../../core/constants/api_constants.dart';
-import '../../../../core/network/dio_client.dart';
+import '../../../../core/network/api_client.dart';
 import '../models/task_model.dart';
 
 abstract class TaskRemoteDataSource {
@@ -22,16 +22,16 @@ abstract class TaskRemoteDataSource {
 }
 
 class TaskRemoteDataSourceImpl implements TaskRemoteDataSource {
-  final DioClient client;
+  final ApiClient client;
   TaskRemoteDataSourceImpl(this.client);
 
   @override
   Future<List<TaskModel>> getTasks({String? status}) async {
-    final response = await client.dio.get(
+    final data = await client.get(
       ApiConstants.tasks,
       queryParameters: status != null ? {'status': status} : null,
     );
-    return (response.data as List)
+    return (data as List)
         .map((e) => TaskModel.fromJson(e as Map<String, dynamic>))
         .toList();
   }
@@ -43,13 +43,13 @@ class TaskRemoteDataSourceImpl implements TaskRemoteDataSource {
     required String dueDate,
     String? reminderTime,
   }) async {
-    final response = await client.dio.post(ApiConstants.tasks, data: {
+    final data = await client.post(ApiConstants.tasks, body: {
       'title': title,
       'description': description,
       'due_date': dueDate,
       if (reminderTime != null) 'reminder_time': reminderTime,
     });
-    return TaskModel.fromJson(response.data as Map<String, dynamic>);
+    return TaskModel.fromJson(data as Map<String, dynamic>);
   }
 
   @override
@@ -60,22 +60,22 @@ class TaskRemoteDataSourceImpl implements TaskRemoteDataSource {
     required String dueDate,
     String? reminderTime,
   }) async {
-    final response = await client.dio.put('${ApiConstants.tasks}/$id', data: {
+    final data = await client.put('${ApiConstants.tasks}/$id', body: {
       'title': title,
       'description': description,
       'due_date': dueDate,
       if (reminderTime != null) 'reminder_time': reminderTime,
     });
-    return TaskModel.fromJson(response.data as Map<String, dynamic>);
+    return TaskModel.fromJson(data as Map<String, dynamic>);
   }
 
   @override
   Future<void> deleteTask(String id) async {
-    await client.dio.delete('${ApiConstants.tasks}/$id');
+    await client.delete('${ApiConstants.tasks}/$id');
   }
 
   @override
   Future<void> changeStatus(String id, String status) async {
-    await client.dio.patch('${ApiConstants.tasks}/$id/status', data: {'status': status});
+    await client.patch('${ApiConstants.tasks}/$id/status', body: {'status': status});
   }
 }

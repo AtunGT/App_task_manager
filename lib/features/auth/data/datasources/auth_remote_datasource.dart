@@ -1,5 +1,5 @@
 import '../../../../core/constants/api_constants.dart';
-import '../../../../core/network/dio_client.dart';
+import '../../../../core/network/api_client.dart';
 import '../models/user_model.dart';
 
 abstract class AuthRemoteDataSource {
@@ -14,18 +14,18 @@ abstract class AuthRemoteDataSource {
 }
 
 class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
-  final DioClient client;
+  final ApiClient client;
   AuthRemoteDataSourceImpl(this.client);
 
   @override
   Future<({String token, UserModel user})> login(String email, String password) async {
-    final response = await client.dio.post(ApiConstants.login, data: {
+    final data = await client.post(ApiConstants.login, body: {
       'email': email,
       'password': password,
     });
     return (
-      token: response.data['token'] as String,
-      user: UserModel.fromJson(response.data['user'] as Map<String, dynamic>),
+      token: data['token'] as String,
+      user: UserModel.fromJson(data['user'] as Map<String, dynamic>),
     );
   }
 
@@ -37,7 +37,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
     required String password,
     required String confirmPassword,
   }) async {
-    final response = await client.dio.post(ApiConstants.register, data: {
+    final data = await client.post(ApiConstants.register, body: {
       'first_name': firstName,
       'last_name': lastName,
       'email': email,
@@ -45,8 +45,8 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
       'confirm_password': confirmPassword,
     });
     return (
-      token: response.data['token'] as String,
-      user: UserModel.fromJson(response.data['user'] as Map<String, dynamic>),
+      token: data['token'] as String,
+      user: UserModel.fromJson(data['user'] as Map<String, dynamic>),
     );
   }
 }

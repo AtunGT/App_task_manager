@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../../domain/entities/task.dart';
-import '../bloc/task_bloc.dart';
-import '../bloc/task_event.dart';
-import '../bloc/task_state.dart';
+import '../viewmodels/task_viewmodel.dart';
 
 class TaskFormPage extends StatefulWidget {
   final Task? task;
@@ -71,7 +69,7 @@ class _TaskFormPageState extends State<TaskFormPage> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -87,122 +85,126 @@ class _TaskFormPageState extends State<TaskFormPage> {
 
     setState(() => _loading = true);
 
+    final vm = context.read<TaskViewModel>();
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    final bool success;
     if (widget.task == null) {
-      context.read<TaskBloc>().add(CreateTask(
-            title: _titleCtrl.text.trim(),
-            description: _descCtrl.text.trim(),
-            dueDate: dueDate,
-            reminderTime: reminderTime,
-          ));
+      success = await vm.createTask(
+        title: _titleCtrl.text.trim(),
+        description: _descCtrl.text.trim(),
+        dueDate: dueDate,
+        reminderTime: reminderTime,
+      );
     } else {
-      context.read<TaskBloc>().add(UpdateTask(
-            id: widget.task!.id,
-            title: _titleCtrl.text.trim(),
-            description: _descCtrl.text.trim(),
-            dueDate: dueDate,
-            reminderTime: reminderTime,
-          ));
+      success = await vm.updateTask(
+        id: widget.task!.id,
+        title: _titleCtrl.text.trim(),
+        description: _descCtrl.text.trim(),
+        dueDate: dueDate,
+        reminderTime: reminderTime,
+      );
+    }
+
+    if (!mounted) return;
+    if (success) {
+      await vm.loadTasks(widget.currentStatus);
+      if (!mounted) return;
+      navigator.pop();
+    } else {
+      setState(() => _loading = false);
+      messenger.showSnackBar(
+        SnackBar(content: Text(vm.errorMessage ?? 'No se pudo guardar la tarea')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.task != null;
-    return BlocListener<TaskBloc, TaskState>(
-      listener: (context, state) {
-        if (state is TaskOperationSuccess) {
-          context.read<TaskBloc>().add(LoadTasks(status: widget.currentStatus));
-          Navigator.pop(context);
-        } else if (state is TaskFailure) {
-          setState(() => _loading = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
-          );
-        }
-      },
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(isEditing ? 'Editar tarea' : 'Nueva tarea'),
-        ),
-        body: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              TextFormField(
-                controller: _titleCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Título',
-                  prefixIcon: Icon(Icons.title),
-                ),
-                validator: (v) =>
-                    v == null || v.trim().isEmpty ? 'El título es requerido' : null,
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(isEditing ? 'Editar tarea' : 'Nueva tarea'),
+      ),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            TextFormField(
+              controller: _titleCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Título',
+                prefixIcon: Icon(Icons.title),
               ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _descCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Descripción',
-                  prefixIcon: Icon(Icons.description),
-                  alignLabelWithHint: true,
-                ),
-                maxLines: 3,
+              validator: (v) =>
+                  v == null || v.trim().isEmpty ? 'El título es requerido' : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _descCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Descripción',
+                prefixIcon: Icon(Icons.description),
+                alignLabelWithHint: true,
               ),
-              const SizedBox(height: 16),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.calendar_today),
-                title: Text(
-                  _selectedDate == null
-                      ? 'Seleccionar fecha'
-                      : DateFormat('dd/MM/yyyy').format(_selectedDate!),
-                ),
-                onTap: _pickDate,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-                ),
-                tileColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              maxLines: 3,
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.calendar_today),
+              title: Text(
+                _selectedDate == null
+                    ? 'Seleccionar fecha'
+                    : DateFormat('dd/MM/yyyy').format(_selectedDate!),
               ),
-              const SizedBox(height: 16),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.alarm),
-                title: Text(
-                  _selectedTime == null
-                      ? 'Agregar recordatorio (opcional)'
-                      : 'Recordatorio: ${_selectedTime!.format(context)}',
+              onTap: _pickDate,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.outline,
                 ),
-                trailing: _selectedTime != null
-                    ? IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => setState(() => _selectedTime = null),
-                      )
-                    : null,
-                onTap: _pickTime,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
+              ),
+              tileColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.alarm),
+              title: Text(
+                _selectedTime == null
+                    ? 'Agregar recordatorio (opcional)'
+                    : 'Recordatorio: ${_selectedTime!.format(context)}',
+              ),
+              trailing: _selectedTime != null
+                  ? IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => setState(() => _selectedTime = null),
+                    )
+                  : null,
+              onTap: _pickTime,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(
+                  color: Theme.of(context).colorScheme.outline,
                 ),
-                tileColor: Theme.of(context).colorScheme.surfaceContainerHighest,
               ),
-              const SizedBox(height: 32),
-              FilledButton(
-                onPressed: _loading ? null : _submit,
-                child: _loading
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Text(isEditing ? 'Guardar cambios' : 'Crear tarea'),
-              ),
-            ],
-          ),
+              tileColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+            ),
+            const SizedBox(height: 32),
+            FilledButton(
+              onPressed: _loading ? null : _submit,
+              child: _loading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Text(isEditing ? 'Guardar cambios' : 'Crear tarea'),
+            ),
+          ],
         ),
       ),
     );
