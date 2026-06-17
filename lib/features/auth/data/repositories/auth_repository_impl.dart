@@ -32,8 +32,6 @@ class AuthRepositoryImpl implements AuthRepository {
       password: password,
       confirmPassword: confirmPassword,
     );
-    await prefs.setString('token', result.token);
-    await prefs.setString('user_name', '${result.user.firstName} ${result.user.lastName}');
     return result;
   }
 }

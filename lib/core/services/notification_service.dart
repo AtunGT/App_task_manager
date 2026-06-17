@@ -16,6 +16,17 @@ class NotificationService {
     await _plugin.initialize(const InitializationSettings(android: android, iOS: ios));
   }
 
+  static Future<void> requestPermissions() async {
+    final android = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    await android?.requestNotificationsPermission();
+    await android?.requestExactAlarmsPermission();
+
+    final ios = _plugin.resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin>();
+    await ios?.requestPermissions(alert: true, badge: true, sound: true);
+  }
+
   static Future<void> schedule({
     required String taskId,
     required String title,

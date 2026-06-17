@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/services/notification_service.dart';
 import 'core/theme/material_theme.dart';
@@ -12,6 +13,7 @@ import 'injection_container.dart' as di;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.init();
+  await NotificationService.requestPermissions();
   await di.init();
   final prefs = di.sl<SharedPreferences>();
   final isLoggedIn = (prefs.getString('token') ?? '').isNotEmpty;
@@ -35,6 +37,16 @@ class MyApp extends StatelessWidget {
         theme: materialTheme.light(),
         darkTheme: materialTheme.dark(),
         debugShowCheckedModeBanner: false,
+        locale: const Locale('es'),
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('es'),
+          Locale('en'),
+        ],
         home: isLoggedIn ? const HomePage() : const LoginPage(),
       ),
     );
